@@ -1,0 +1,43 @@
+name: AI Platform CI Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: Install Dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r ai-exam-backend/requirements.txt
+        pip install bandit safety
+
+    - name: 🛡️ SCA Scan (Software Composition Analysis)
+      run: safety check -r ai-exam-backend/requirements.txt --full-report || true
+
+    - name: 🛡️ SAST Scan (Static Application Security Testing)
+      run: bandit -r ai-exam-backend/ -ll -ii || true
+
+    - name: 🛡️ DAST Scan (Dynamic Application Security Testing)
+      uses: zaproxy/action-baseline@v0.12.0
+      with:
+        target: 'http://localhost:8000'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a'
+      continue-on-error: true
+
+    - name: 🐳 Build Docker Image
+      run: docker build -t ai-platform-backend:latest ./ai-exam-backend
